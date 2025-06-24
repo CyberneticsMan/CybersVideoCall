@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call - Room {{ room_id }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/room.css">
+</head>
+<body>
+    <div class="room-container">
+        <!-- Header with room info and controls -->
+        <header class="room-header">
+            <div class="room-info">
+                <h2>Room: {{ room_id }}</h2>
+                <span id="participantCount" class="participant-count">1 participant</span>
+            </div>
+            <div class="header-controls">
+                <button id="copyRoomBtn" class="btn btn-secondary" title="Copy room link">
+                    📋 Copy Link
+                </button>
+                <button id="leaveRoomBtn" class="btn btn-danger">
+                    🚪 Leave Room
+                </button>
+            </div>
+        </header>
+
+        <!-- Main content area -->
+        <div class="room-content">
+            <!-- Video grid -->
+            <div class="video-section">
+                <div class="video-grid" id="videoGrid">
+                    <div class="video-container local-video">
+                        <video id="localVideo" autoplay muted playsinline></video>
+                        <div class="video-overlay">
+                            <span class="video-label">You</span>
+                            <div class="video-controls">
+                                <button id="toggleVideoBtn" class="control-btn active" title="Toggle video">
+                                    📹
+                                </button>
+                                <button id="toggleAudioBtn" class="control-btn active" title="Toggle audio">
+                                    🎤
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar with tools -->
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-tabs">
+                    <button class="tab-btn active" data-tab="chat">💬 Chat</button>
+                    <button class="tab-btn" data-tab="whiteboard">🎨 Whiteboard</button>
+                    <button class="tab-btn" data-tab="participants">👥 Participants</button>
+                </div>
+
+                <!-- Chat tab -->
+                <div class="tab-content active" id="chatTab">
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chatMessages"></div>
+                        <div class="chat-input-container">
+                            <input type="text" id="chatInput" placeholder="Type a message..." />
+                            <button id="sendChatBtn" class="btn btn-primary">Send</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Whiteboard tab -->
+                <div class="tab-content" id="whiteboardTab">
+                    <div class="whiteboard-container">
+                        <div class="whiteboard-tools">
+                            <button id="penTool" class="tool-btn active" data-tool="pen">✏️</button>
+                            <button id="eraserTool" class="tool-btn" data-tool="eraser">🧹</button>
+                            <input type="color" id="colorPicker" value="#000000" />
+                            <input type="range" id="brushSize" min="1" max="20" value="3" />
+                            <button id="clearWhiteboard" class="btn btn-secondary">Clear</button>
+                        </div>
+                        <canvas id="whiteboardCanvas" width="800" height="600"></canvas>
+                    </div>
+                </div>
+
+                <!-- Participants tab -->
+                <div class="tab-content" id="participantsTab">
+                    <div class="participants-list" id="participantsList">
+                        <div class="participant-item">
+                            <div class="participant-avatar">👤</div>
+                            <div class="participant-info">
+                                <span class="participant-name">You</span>
+                                <span class="participant-status">Host</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom controls -->
+        <div class="bottom-controls">
+            <div class="control-group">
+                <button id="toggleVideoMainBtn" class="control-btn large active" title="Toggle camera">
+                    📹
+                </button>
+                <button id="toggleAudioMainBtn" class="control-btn large active" title="Toggle microphone">
+                    🎤
+                </button>
+                <button id="shareScreenBtn" class="control-btn large" title="Share screen">
+                    🖥️
+                </button>
+                <button id="toggleWhiteboardBtn" class="control-btn large" title="Toggle whiteboard">
+                    🎨
+                </button>
+                <button id="toggleChatBtn" class="control-btn large" title="Toggle chat">
+                    💬
+                </button>
+                <button id="settingsBtn" class="control-btn large" title="Settings">
+                    ⚙️
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button id="closeSettingsBtn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label for="cameraSelect">Camera:</label>
+                    <select id="cameraSelect"></select>
+                </div>
+                <div class="setting-group">
+                    <label for="microphoneSelect">Microphone:</label>
+                    <select id="microphoneSelect"></select>
+                </div>
+                <div class="setting-group">
+                    <label for="speakerSelect">Speaker:</label>
+                    <select id="speakerSelect"></select>
+                </div>
+                <div class="setting-group">
+                    <label for="videoQuality">Video Quality:</label>
+                    <select id="videoQuality">
+                        <option value="low">Low (480p)</option>
+                        <option value="medium" selected>Medium (720p)</option>
+                        <option value="high">High (1080p)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ROOM_ID = "{{ room_id }}";
+    </script>
+    <script src="/static/js/webrtc.js"></script>
+    <script src="/static/js/whiteboard.js"></script>
+    <script src="/static/js/room.js"></script>
+</body>
+</html>

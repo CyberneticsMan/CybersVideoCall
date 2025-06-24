@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Video Call App</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Professional Video Call App</h1>
+            <p>Connect with colleagues through high-quality video calls</p>
+        </header>
+        
+        <main class="main-content">
+            <div class="welcome-section">
+                <h2>Welcome to Your Video Calling Solution</h2>
+                <p>Experience crystal-clear video calls with advanced features including screen sharing and collaborative whiteboard.</p>
+                
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🎥</div>
+                        <h3>HD Video Calls</h3>
+                        <p>High-definition video with adaptive quality</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎤</div>
+                        <h3>Crystal Clear Audio</h3>
+                        <p>Echo cancellation and noise reduction</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🖥️</div>
+                        <h3>Screen Sharing</h3>
+                        <p>Share your screen for presentations</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎨</div>
+                        <h3>Interactive Whiteboard</h3>
+                        <p>Collaborate with real-time drawing tools</p>
+                    </div>
+                </div>
+                
+                <div class="join-section">
+                    <div class="input-group">
+                        <input type="text" id="roomId" placeholder="Enter room ID or leave blank for new room" />
+                        <button id="joinBtn" class="btn btn-primary">Join Room</button>
+                    </div>
+                    <p class="help-text">Share the room ID with others to invite them to your call</p>
+                </div>
+                
+                <div class="active-rooms">
+                    <h3>Active Rooms</h3>
+                    <div id="roomsList" class="rooms-list">
+                        <p class="no-rooms">No active rooms</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="footer">
+            <p>&copy; 2025 Professional Video Call App - Open Source</p>
+        </footer>
+    </div>
+    
+    <script src="/static/js/home.js"></script>
+</body>
+</html>

@@ -241,9 +241,18 @@ class RoomManager {
         });
         document.getElementById(`${tabName}Tab`)?.classList.add('active');
 
-        // Special handling for whiteboard
+        // Special handling for whiteboard - wait for tab to be visible
         if (tabName === 'whiteboard' && this.whiteboard) {
-            setTimeout(() => this.whiteboard.resizeCanvas(), 100);
+            // Use requestAnimationFrame to ensure the tab is fully rendered
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    // Check if the whiteboard container is visible and has dimensions
+                    const whiteboardContainer = document.querySelector('.whiteboard-container');
+                    if (whiteboardContainer && whiteboardContainer.offsetWidth > 0) {
+                        this.whiteboard.resizeCanvas();
+                    }
+                }, 100);
+            });
         }
     }
 

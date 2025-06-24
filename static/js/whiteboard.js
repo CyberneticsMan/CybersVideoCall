@@ -49,14 +49,51 @@ class WhiteboardManager {
 
     resizeCanvas() {
         const container = this.canvas.parentElement;
-        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        if (!container) return;
         
-        this.canvas.width = container.clientWidth;
-        this.canvas.height = container.clientHeight - 60;
+        // Get current dimensions
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight - 60; // Account for toolbar
         
-        this.ctx.putImageData(imageData, 0, 0);
+        // Don't resize if container has no dimensions yet
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            console.log('Container not ready for resize, skipping...');
+            return;
+        }
+        
+        // Save current canvas content only if canvas has valid dimensions
+        let imageData = null;
+        if (this.canvas.width > 0 && this.canvas.height > 0) {
+            try {
+                imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+            } catch (error) {
+                console.warn('Could not save canvas content during resize:', error);
+            }
+        }
+        
+        // Set new dimensions
+        this.canvas.width = containerWidth;
+        this.canvas.height = containerHeight;
+        
+        // Restore canvas content if we had valid data
+        if (imageData && imageData.width > 0 && imageData.height > 0) {
+            try {
+                this.ctx.putImageData(imageData, 0, 0);
+            } catch (error) {
+                console.warn('Could not restore canvas content after resize:', error);
+                // Fallback: redraw from stored strokes
+                this.redrawCanvas();
+            }
+        } else {
+            // Redraw from stored strokes
+            this.redrawCanvas();
+        }
+        
+        // Restore drawing properties
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
+        this.ctx.strokeStyle = this.currentColor;
+        this.ctx.lineWidth = this.currentSize;
     }
 
     bindEvents() {

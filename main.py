@@ -285,14 +285,32 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
 if __name__ == "__main__":
     import uvicorn
+    import ssl
+    import os
     
-    # For development: Run on localhost to avoid HTTPS requirement for media access
+    # Create SSL context for HTTPS
+    ssl_context = None
+    
+    # Check if SSL certificates exist
+    cert_file = "cert.pem"
+    key_file = "key.pem"
+    
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(cert_file, key_file)
+        print("🔒 SSL certificates found - starting with HTTPS")
+        server_url = "https://0.0.0.0:5000"
+    else:
+        print("⚠️  No SSL certificates found - starting with HTTP")
+        print("   For production or testing WebRTC features, HTTPS is required")
+        server_url = "http://0.0.0.0:5000"
+    
     print("🎥 Professional Video Call App")
     print("================================")
-    print("📍 Server starting on: http://localhost:8000")
+    print(f"📍 Server starting on: {server_url}")
     print("")
     print("🔒 IMPORTANT: Camera/Microphone Access")
-    print("   • Use http://localhost:8000 (NOT 127.0.0.1)")
+    print(f"   • Use {server_url}")
     print("   • Grant permissions when browser asks")
     print("   • If permissions fail, see troubleshooting below")
     print("")
@@ -310,11 +328,13 @@ if __name__ == "__main__":
     print("⚙️  Press Ctrl+C to stop the server")
     print("================================")
     
-    # Use import string format to fix reload warning
+    # Run with or without SSL
     uvicorn.run(
-        "main:app",  # Import string instead of app object
+        "main:app",
         host="0.0.0.0", 
-        port=5000, 
+        port=5000,  # Changed back to 5000 to match the printed URL
         log_level="info",
-        reload=True
+        reload=True,
+        ssl_keyfile=key_file if ssl_context else None,
+        ssl_certfile=cert_file if ssl_context else None
     )

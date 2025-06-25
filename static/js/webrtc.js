@@ -13,14 +13,43 @@ class WebRTCManager {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         
-        // WebRTC configuration with STUN servers
+        // WebRTC configuration with STUN and TURN servers
         this.rtcConfiguration = {
             iceServers: [
+                // Google STUN servers
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                
+                // Additional STUN servers for better connectivity
+                { urls: 'stun:stunserver.org' },
+                { urls: 'stun:stun.softjoys.com' },
+                { urls: 'stun:stun.voiparound.com' },
+                { urls: 'stun:stun.voipbuster.com' },
+                { urls: 'stun:stun.voipstunt.com' },
+                
+                // Free TURN servers (for production, use your own TURN server)
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ],
-            iceCandidatePoolSize: 10
+            iceCandidatePoolSize: 10,
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
         };
         
         this.constraints = {
@@ -221,25 +250,86 @@ class WebRTCManager {
             this.addRemoteVideo(userId, event.streams[0]);
         };
         
-        // Handle ICE candidates
+        // Enhanced ICE candidate handling with logging
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log(`Sending ICE candidate to ${userId}:`, event.candidate.type);
                 this.sendMessage({
                     type: 'webrtc_ice_candidate',
                     target_user: userId,
                     candidate: event.candidate
                 });
+            } else {
+                console.log(`ICE gathering completed for ${userId}`);
             }
         };
         
-        // Handle connection state changes
+        // Enhanced connection state monitoring
         peerConnection.onconnectionstatechange = () => {
-            console.log(`Connection state with ${userId}:`, peerConnection.connectionState);
-            this.updateConnectionStatus(userId, peerConnection.connectionState);
+            const state = peerConnection.connectionState;
+            console.log(`Connection state with ${userId}:`, state);
+            this.updateConnectionStatus(userId, state);
+            
+            // Log connection failure details
+            if (state === 'failed') {
+                console.error(`Connection failed with ${userId}`);
+                this.handleConnectionFailure(userId, peerConnection);
+            }
+        };
+        
+        // ICE connection state monitoring
+        peerConnection.oniceconnectionstatechange = () => {
+            const iceState = peerConnection.iceConnectionState;
+            console.log(`ICE connection state with ${userId}:`, iceState);
+            
+            if (iceState === 'failed' || iceState === 'disconnected') {
+                console.warn(`ICE connection issue with ${userId}:`, iceState);
+                setTimeout(() => {
+                    if (peerConnection.iceConnectionState === 'failed') {
+                        this.attemptIceRestart(userId);
+                    }
+                }, 5000);
+            }
+        };
+        
+        // ICE gathering state monitoring
+        peerConnection.onicegatheringstatechange = () => {
+            console.log(`ICE gathering state with ${userId}:`, peerConnection.iceGatheringState);
         };
         
         this.peerConnections.set(userId, peerConnection);
         return peerConnection;
+    }
+
+    handleConnectionFailure(userId, peerConnection) {
+        console.log(`Attempting to recover connection with ${userId}`);
+        
+        // Try ICE restart first
+        setTimeout(() => {
+            if (this.peerConnections.has(userId)) {
+                this.attemptIceRestart(userId);
+            }
+        }, 2000);
+    }
+
+    async attemptIceRestart(userId) {
+        const peerConnection = this.peerConnections.get(userId);
+        if (!peerConnection) return;
+        
+        try {
+            console.log(`Attempting ICE restart for ${userId}`);
+            const offer = await peerConnection.createOffer({ iceRestart: true });
+            await peerConnection.setLocalDescription(offer);
+            
+            this.sendMessage({
+                type: 'webrtc_offer',
+                target_user: userId,
+                offer: offer,
+                isRestart: true
+            });
+        } catch (error) {
+            console.error(`ICE restart failed for ${userId}:`, error);
+        }
     }
 
     async createOffer(userId) {
@@ -250,7 +340,9 @@ class WebRTCManager {
     }
 
     async handleOffer(message) {
-        const { sender, offer } = message;
+        const { sender, offer, isRestart } = message;
+        
+        console.log(`Received ${isRestart ? 'restart ' : ''}offer from ${sender}`);
         
         // Create peer connection if it doesn't exist
         if (!this.peerConnections.has(sender)) {
@@ -258,17 +350,24 @@ class WebRTCManager {
         }
         
         const peerConnection = this.peerConnections.get(sender);
-        await peerConnection.setRemoteDescription(offer);
         
-        // Create and send answer
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        this.sendMessage({
-            type: 'webrtc_answer',
-            target_user: sender,
-            answer: answer
-        });
+        try {
+            await peerConnection.setRemoteDescription(offer);
+            
+            // Create and send answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            this.sendMessage({
+                type: 'webrtc_answer',
+                target_user: sender,
+                answer: answer
+            });
+            
+            console.log(`Sent answer to ${sender}`);
+        } catch (error) {
+            console.error(`Error handling offer from ${sender}:`, error);
+        }
     }
 
     async handleAnswer(message) {
@@ -276,7 +375,12 @@ class WebRTCManager {
         const peerConnection = this.peerConnections.get(sender);
         
         if (peerConnection) {
-            await peerConnection.setRemoteDescription(answer);
+            try {
+                await peerConnection.setRemoteDescription(answer);
+                console.log(`Set remote description from ${sender}`);
+            } catch (error) {
+                console.error(`Error setting remote description from ${sender}:`, error);
+            }
         }
     }
 
@@ -284,8 +388,53 @@ class WebRTCManager {
         const { sender, candidate } = message;
         const peerConnection = this.peerConnections.get(sender);
         
-        if (peerConnection) {
-            await peerConnection.addIceCandidate(candidate);
+        if (peerConnection && peerConnection.remoteDescription) {
+            try {
+                await peerConnection.addIceCandidate(candidate);
+                console.log(`Added ICE candidate from ${sender}:`, candidate.type);
+            } catch (error) {
+                console.error(`Error adding ICE candidate from ${sender}:`, error);
+            }
+        } else {
+            console.warn(`Received ICE candidate from ${sender} but peer connection not ready`);
+        }
+    }
+
+    // Add connection diagnostics
+    async getConnectionStats(userId) {
+        const peerConnection = this.peerConnections.get(userId);
+        if (!peerConnection) return null;
+        
+        try {
+            const stats = await peerConnection.getStats();
+            const report = {};
+            
+            stats.forEach(stat => {
+                if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
+                    report.selectedCandidatePair = stat;
+                } else if (stat.type === 'local-candidate' && stat.id === report.selectedCandidatePair?.localCandidateId) {
+                    report.localCandidate = stat;
+                } else if (stat.type === 'remote-candidate' && stat.id === report.selectedCandidatePair?.remoteCandidateId) {
+                    report.remoteCandidate = stat;
+                }
+            });
+            
+            return report;
+        } catch (error) {
+            console.error(`Error getting stats for ${userId}:`, error);
+            return null;
+        }
+    }
+
+    // Add network type detection
+    async detectNetworkType() {
+        if ('connection' in navigator) {
+            const connection = navigator.connection;
+            console.log('Network info:', {
+                effectiveType: connection.effectiveType,
+                downlink: connection.downlink,
+                rtt: connection.rtt
+            });
         }
     }
 
@@ -429,7 +578,9 @@ class WebRTCManager {
     }
 
     async handleOffer(message) {
-        const { sender, offer } = message;
+        const { sender, offer, isRestart } = message;
+        
+        console.log(`Received ${isRestart ? 'restart ' : ''}offer from ${sender}`);
         
         // Create peer connection if it doesn't exist
         if (!this.peerConnections.has(sender)) {
@@ -437,17 +588,24 @@ class WebRTCManager {
         }
         
         const peerConnection = this.peerConnections.get(sender);
-        await peerConnection.setRemoteDescription(offer);
         
-        // Create and send answer
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        this.sendMessage({
-            type: 'webrtc_answer',
-            target_user: sender,
-            answer: answer
-        });
+        try {
+            await peerConnection.setRemoteDescription(offer);
+            
+            // Create and send answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            this.sendMessage({
+                type: 'webrtc_answer',
+                target_user: sender,
+                answer: answer
+            });
+            
+            console.log(`Sent answer to ${sender}`);
+        } catch (error) {
+            console.error(`Error handling offer from ${sender}:`, error);
+        }
     }
 
     async handleAnswer(message) {
@@ -455,7 +613,12 @@ class WebRTCManager {
         const peerConnection = this.peerConnections.get(sender);
         
         if (peerConnection) {
-            await peerConnection.setRemoteDescription(answer);
+            try {
+                await peerConnection.setRemoteDescription(answer);
+                console.log(`Set remote description from ${sender}`);
+            } catch (error) {
+                console.error(`Error setting remote description from ${sender}:`, error);
+            }
         }
     }
 
@@ -463,216 +626,529 @@ class WebRTCManager {
         const { sender, candidate } = message;
         const peerConnection = this.peerConnections.get(sender);
         
-        if (peerConnection) {
-            await peerConnection.addIceCandidate(candidate);
-        }
-    }
-
-    updateConnectionStatus(userId, state) {
-        const statusElement = document.getElementById(`status-${userId}`);
-        if (statusElement) {
-            statusElement.className = 'connection-status';
-            
-            switch (state) {
-                case 'connected':
-                    statusElement.classList.add('connected');
-                    break;
-                case 'connecting':
-                case 'checking':
-                    statusElement.classList.add('connecting');
-                    break;
-                case 'disconnected':
-                case 'failed':
-                    statusElement.classList.add('disconnected');
-                    break;
+        if (peerConnection && peerConnection.remoteDescription) {
+            try {
+                await peerConnection.addIceCandidate(candidate);
+                console.log(`Added ICE candidate from ${sender}:`, candidate.type);
+            } catch (error) {
+                console.error(`Error adding ICE candidate from ${sender}:`, error);
             }
+        } else {
+            console.warn(`Received ICE candidate from ${sender} but peer connection not ready`);
         }
     }
 
-    toggleVideo() {
-        if (this.localStream) {
-            const videoTrack = this.localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.enabled = !videoTrack.enabled;
-                this.isVideoEnabled = videoTrack.enabled;
-            }
-        }
-        return this.isVideoEnabled;
-    }
-
-    toggleAudio() {
-        if (this.localStream) {
-            const audioTrack = this.localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                this.isAudioEnabled = audioTrack.enabled;
-            }
-        }
-        return this.isAudioEnabled;
-    }
-
-    async startScreenShare() {
+    // Add connection diagnostics
+    async getConnectionStats(userId) {
+        const peerConnection = this.peerConnections.get(userId);
+        if (!peerConnection) return null;
+        
         try {
-            this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { mediaSource: 'screen' },
-                audio: true
-            });
+            const stats = await peerConnection.getStats();
+            const report = {};
             
-            // Replace video track in all peer connections
-            const videoTrack = this.screenStream.getVideoTracks()[0];
-            
-            for (const [userId, peerConnection] of this.peerConnections) {
-                const sender = peerConnection.getSenders().find(s => 
-                    s.track && s.track.kind === 'video'
-                );
-                
-                if (sender) {
-                    await sender.replaceTrack(videoTrack);
+            stats.forEach(stat => {
+                if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
+                    report.selectedCandidatePair = stat;
+                } else if (stat.type === 'local-candidate' && stat.id === report.selectedCandidatePair?.localCandidateId) {
+                    report.localCandidate = stat;
+                } else if (stat.type === 'remote-candidate' && stat.id === report.selectedCandidatePair?.remoteCandidateId) {
+                    report.remoteCandidate = stat;
                 }
-            }
-            
-            // Update local video
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = this.screenStream;
-            }
-            
-            // Handle screen share end
-            videoTrack.onended = () => {
-                this.stopScreenShare();
-            };
-            
-            this.isScreenSharing = true;
-            
-            // Notify other users
-            this.sendMessage({
-                type: 'screen_share_start'
             });
             
-            return true;
+            return report;
         } catch (error) {
-            console.error('Error starting screen share:', error);
-            return false;
+            console.error(`Error getting stats for ${userId}:`, error);
+            return null;
         }
     }
 
-    async stopScreenShare() {
-        if (this.screenStream) {
-            this.screenStream.getTracks().forEach(track => track.stop());
-            this.screenStream = null;
+    // Add network type detection
+    async detectNetworkType() {
+        if ('connection' in navigator) {
+            const connection = navigator.connection;
+            console.log('Network info:', {
+                effectiveType: connection.effectiveType,
+                downlink: connection.downlink,
+                rtt: connection.rtt
+            });
         }
+    }
+
+    removeVideoElement(userId) {
+        const videoContainer = document.getElementById(`video-${userId}`);
+        if (videoContainer) {
+            videoContainer.remove();
+        }
+    }
+
+    addRemoteVideo(userId, stream) {
+        // Remove existing video element if any
+        this.removeVideoElement(userId);
         
-        // Replace with camera video
-        if (this.localStream) {
-            const videoTrack = this.localStream.getVideoTracks()[0];
+        // Create new video container
+        const videoContainer = document.createElement('div');
+        videoContainer.className = 'video-container remote-video';
+        videoContainer.id = `video-${userId}`;
+        
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsinline = true;
+        video.srcObject = stream;
+        
+        // Add fullscreen button
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'video-fullscreen-btn';
+        fullscreenBtn.innerHTML = '⛶';
+        fullscreenBtn.title = 'Fullscreen';
+        fullscreenBtn.onclick = () => this.enterVideoFullscreen(video, userId);
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'video-overlay';
+        
+        const label = document.createElement('span');
+        label.className = 'video-label';
+        label.textContent = userId.replace('user_', '').substring(0, 8);
+        
+        const connectionStatus = document.createElement('div');
+        connectionStatus.className = 'connection-status';
+        connectionStatus.id = `status-${userId}`;
+        
+        overlay.appendChild(label);
+        overlay.appendChild(connectionStatus);
+        videoContainer.appendChild(video);
+        videoContainer.appendChild(fullscreenBtn);
+        videoContainer.appendChild(overlay);
+        
+        // Add click to fullscreen functionality
+        videoContainer.addEventListener('dblclick', () => {
+            this.enterVideoFullscreen(video, userId);
+        });
+        
+        // Add to video grid
+        const videoGrid = document.getElementById('videoGrid');
+        videoGrid.appendChild(videoContainer);
+    }
+
+    enterVideoFullscreen(videoElement, userId) {
+        const overlay = document.getElementById('fullscreenOverlay');
+        const fullscreenVideo = document.getElementById('fullscreenVideo');
+        const fullscreenTitle = document.getElementById('fullscreenTitle');
+        
+        // Clone the video stream
+        fullscreenVideo.srcObject = videoElement.srcObject;
+        fullscreenTitle.textContent = userId === 'local' ? 'You (Local)' : `${userId.replace('user_', '').substring(0, 8)} (Remote)`;
+        
+        overlay.classList.add('active');
+        overlay.dataset.userId = userId;
+        
+        // Store reference for PiP
+        this.currentFullscreenVideo = {
+            element: fullscreenVideo,
+            userId: userId,
+            originalVideo: videoElement
+        };
+    }
+
+    exitVideoFullscreen() {
+        const overlay = document.getElementById('fullscreenOverlay');
+        overlay.classList.remove('active');
+        this.currentFullscreenVideo = null;
+    }
+
+    async enablePictureInPicture() {
+        if (!this.currentFullscreenVideo) return;
+        
+        try {
+            const pipContainer = document.getElementById('pipContainer');
+            const pipVideo = document.getElementById('pipVideo');
             
-            for (const [userId, peerConnection] of this.peerConnections) {
-                const sender = peerConnection.getSenders().find(s => 
-                    s.track && s.track.kind === 'video'
-                );
+            // Clone stream to PiP video
+            pipVideo.srcObject = this.currentFullscreenVideo.element.srcObject;
+            pipContainer.classList.add('active');
+            
+            // Exit fullscreen
+            this.exitVideoFullscreen();
+            
+            // Enable dragging for PiP
+            this.makePipDraggable();
+            
+        } catch (error) {
+            console.error('PiP not supported:', error);
+            // Fallback to browser's native PiP if available
+            if (this.currentFullscreenVideo.element.requestPictureInPicture) {
+                await this.currentFullscreenVideo.element.requestPictureInPicture();
+            }
+        }
+    }
+
+    makePipDraggable() {
+        const pipContainer = document.getElementById('pipContainer');
+        let isDragging = false;
+        let currentX, currentY, initialX, initialY;
+        
+        pipContainer.addEventListener('mousedown', (e) => {
+            initialX = e.clientX - pipContainer.offsetLeft;
+            initialY = e.clientY - pipContainer.offsetTop;
+            isDragging = true;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
                 
-                if (sender) {
-                    await sender.replaceTrack(videoTrack);
-                }
+                pipContainer.style.left = currentX + 'px';
+                pipContainer.style.top = currentY + 'px';
             }
-            
-            // Update local video
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = this.localStream;
-            }
-        }
+        });
         
-        this.isScreenSharing = false;
-        
-        // Notify other users
-        this.sendMessage({
-            type: 'screen_share_stop'
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
         });
     }
 
-    handleScreenShareStart(message) {
-        const { user_id } = message;
-        const videoElement = document.querySelector(`#video-${user_id} video`);
-        if (videoElement) {
-            // Add screen share indicator
-            const overlay = videoElement.parentElement.querySelector('.video-overlay');
-            if (overlay && !overlay.querySelector('.screen-share-overlay')) {
-                const indicator = document.createElement('div');
-                indicator.className = 'screen-share-overlay';
-                indicator.textContent = '🖥️ Screen Sharing';
-                overlay.appendChild(indicator);
-            }
-        }
+    closePictureInPicture() {
+        const pipContainer = document.getElementById('pipContainer');
+        pipContainer.classList.remove('active');
     }
 
-    handleScreenShareStop(message) {
-        const { user_id } = message;
-        const videoElement = document.querySelector(`#video-${user_id} video`);
-        if (videoElement) {
-            // Remove screen share indicator
-            const indicator = videoElement.parentElement.querySelector('.screen-share-overlay');
-            if (indicator) {
-                indicator.remove();
-            }
+    async handleOffer(message) {
+        const { sender, offer, isRestart } = message;
+        
+        console.log(`Received ${isRestart ? 'restart ' : ''}offer from ${sender}`);
+        
+        // Create peer connection if it doesn't exist
+        if (!this.peerConnections.has(sender)) {
+            await this.createPeerConnection(sender);
         }
-    }
-
-    async getAvailableDevices() {
+        
+        const peerConnection = this.peerConnections.get(sender);
+        
         try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            return {
-                cameras: devices.filter(device => device.kind === 'videoinput'),
-                microphones: devices.filter(device => device.kind === 'audioinput'),
-                speakers: devices.filter(device => device.kind === 'audiooutput')
-            };
+            await peerConnection.setRemoteDescription(offer);
+            
+            // Create and send answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            this.sendMessage({
+                type: 'webrtc_answer',
+                target_user: sender,
+                answer: answer
+            });
+            
+            console.log(`Sent answer to ${sender}`);
         } catch (error) {
-            console.error('Error getting devices:', error);
-            return { cameras: [], microphones: [], speakers: [] };
+            console.error(`Error handling offer from ${sender}:`, error);
         }
     }
 
-    async switchCamera(deviceId) {
+    async handleAnswer(message) {
+        const { sender, answer } = message;
+        const peerConnection = this.peerConnections.get(sender);
+        
+        if (peerConnection) {
+            try {
+                await peerConnection.setRemoteDescription(answer);
+                console.log(`Set remote description from ${sender}`);
+            } catch (error) {
+                console.error(`Error setting remote description from ${sender}:`, error);
+            }
+        }
+    }
+
+    async handleIceCandidate(message) {
+        const { sender, candidate } = message;
+        const peerConnection = this.peerConnections.get(sender);
+        
+        if (peerConnection && peerConnection.remoteDescription) {
+            try {
+                await peerConnection.addIceCandidate(candidate);
+                console.log(`Added ICE candidate from ${sender}:`, candidate.type);
+            } catch (error) {
+                console.error(`Error adding ICE candidate from ${sender}:`, error);
+            }
+        } else {
+            console.warn(`Received ICE candidate from ${sender} but peer connection not ready`);
+        }
+    }
+
+    // Add connection diagnostics
+    async getConnectionStats(userId) {
+        const peerConnection = this.peerConnections.get(userId);
+        if (!peerConnection) return null;
+        
         try {
-            const newConstraints = {
-                ...this.constraints,
-                video: {
-                    ...this.constraints.video,
-                    deviceId: { exact: deviceId }
+            const stats = await peerConnection.getStats();
+            const report = {};
+            
+            stats.forEach(stat => {
+                if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
+                    report.selectedCandidatePair = stat;
+                } else if (stat.type === 'local-candidate' && stat.id === report.selectedCandidatePair?.localCandidateId) {
+                    report.localCandidate = stat;
+                } else if (stat.type === 'remote-candidate' && stat.id === report.selectedCandidatePair?.remoteCandidateId) {
+                    report.remoteCandidate = stat;
                 }
-            };
+            });
             
-            const newStream = await navigator.mediaDevices.getUserMedia(newConstraints);
-            const videoTrack = newStream.getVideoTracks()[0];
+            return report;
+        } catch (error) {
+            console.error(`Error getting stats for ${userId}:`, error);
+            return null;
+        }
+    }
+
+    // Add network type detection
+    async detectNetworkType() {
+        if ('connection' in navigator) {
+            const connection = navigator.connection;
+            console.log('Network info:', {
+                effectiveType: connection.effectiveType,
+                downlink: connection.downlink,
+                rtt: connection.rtt
+            });
+        }
+    }
+
+    removeVideoElement(userId) {
+        const videoContainer = document.getElementById(`video-${userId}`);
+        if (videoContainer) {
+            videoContainer.remove();
+        }
+    }
+
+    addRemoteVideo(userId, stream) {
+        // Remove existing video element if any
+        this.removeVideoElement(userId);
+        
+        // Create new video container
+        const videoContainer = document.createElement('div');
+        videoContainer.className = 'video-container remote-video';
+        videoContainer.id = `video-${userId}`;
+        
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsinline = true;
+        video.srcObject = stream;
+        
+        // Add fullscreen button
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'video-fullscreen-btn';
+        fullscreenBtn.innerHTML = '⛶';
+        fullscreenBtn.title = 'Fullscreen';
+        fullscreenBtn.onclick = () => this.enterVideoFullscreen(video, userId);
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'video-overlay';
+        
+        const label = document.createElement('span');
+        label.className = 'video-label';
+        label.textContent = userId.replace('user_', '').substring(0, 8);
+        
+        const connectionStatus = document.createElement('div');
+        connectionStatus.className = 'connection-status';
+        connectionStatus.id = `status-${userId}`;
+        
+        overlay.appendChild(label);
+        overlay.appendChild(connectionStatus);
+        videoContainer.appendChild(video);
+        videoContainer.appendChild(fullscreenBtn);
+        videoContainer.appendChild(overlay);
+        
+        // Add click to fullscreen functionality
+        videoContainer.addEventListener('dblclick', () => {
+            this.enterVideoFullscreen(video, userId);
+        });
+        
+        // Add to video grid
+        const videoGrid = document.getElementById('videoGrid');
+        videoGrid.appendChild(videoContainer);
+    }
+
+    enterVideoFullscreen(videoElement, userId) {
+        const overlay = document.getElementById('fullscreenOverlay');
+        const fullscreenVideo = document.getElementById('fullscreenVideo');
+        const fullscreenTitle = document.getElementById('fullscreenTitle');
+        
+        // Clone the video stream
+        fullscreenVideo.srcObject = videoElement.srcObject;
+        fullscreenTitle.textContent = userId === 'local' ? 'You (Local)' : `${userId.replace('user_', '').substring(0, 8)} (Remote)`;
+        
+        overlay.classList.add('active');
+        overlay.dataset.userId = userId;
+        
+        // Store reference for PiP
+        this.currentFullscreenVideo = {
+            element: fullscreenVideo,
+            userId: userId,
+            originalVideo: videoElement
+        };
+    }
+
+    exitVideoFullscreen() {
+        const overlay = document.getElementById('fullscreenOverlay');
+        overlay.classList.remove('active');
+        this.currentFullscreenVideo = null;
+    }
+
+    async enablePictureInPicture() {
+        if (!this.currentFullscreenVideo) return;
+        
+        try {
+            const pipContainer = document.getElementById('pipContainer');
+            const pipVideo = document.getElementById('pipVideo');
             
-            // Replace track in all peer connections
-            for (const [userId, peerConnection] of this.peerConnections) {
-                const sender = peerConnection.getSenders().find(s => 
-                    s.track && s.track.kind === 'video'
-                );
+            // Clone stream to PiP video
+            pipVideo.srcObject = this.currentFullscreenVideo.element.srcObject;
+            pipContainer.classList.add('active');
+            
+            // Exit fullscreen
+            this.exitVideoFullscreen();
+            
+            // Enable dragging for PiP
+            this.makePipDraggable();
+            
+        } catch (error) {
+            console.error('PiP not supported:', error);
+            // Fallback to browser's native PiP if available
+            if (this.currentFullscreenVideo.element.requestPictureInPicture) {
+                await this.currentFullscreenVideo.element.requestPictureInPicture();
+            }
+        }
+    }
+
+    makePipDraggable() {
+        const pipContainer = document.getElementById('pipContainer');
+        let isDragging = false;
+        let currentX, currentY, initialX, initialY;
+        
+        pipContainer.addEventListener('mousedown', (e) => {
+            initialX = e.clientX - pipContainer.offsetLeft;
+            initialY = e.clientY - pipContainer.offsetTop;
+            isDragging = true;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
                 
-                if (sender) {
-                    await sender.replaceTrack(videoTrack);
-                }
+                pipContainer.style.left = currentX + 'px';
+                pipContainer.style.top = currentY + 'px';
             }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+    }
+
+    closePictureInPicture() {
+        const pipContainer = document.getElementById('pipContainer');
+        pipContainer.classList.remove('active');
+    }
+
+    async handleOffer(message) {
+        const { sender, offer, isRestart } = message;
+        
+        console.log(`Received ${isRestart ? 'restart ' : ''}offer from ${sender}`);
+        
+        // Create peer connection if it doesn't exist
+        if (!this.peerConnections.has(sender)) {
+            await this.createPeerConnection(sender);
+        }
+        
+        const peerConnection = this.peerConnections.get(sender);
+        
+        try {
+            await peerConnection.setRemoteDescription(offer);
             
-            // Stop old video track
-            if (this.localStream) {
-                this.localStream.getVideoTracks().forEach(track => track.stop());
-                this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
-                this.localStream.addTrack(videoTrack);
-            }
+            // Create and send answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
             
-            // Update local video
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) {
-                localVideo.srcObject = this.localStream;
-            }
+            this.sendMessage({
+                type: 'webrtc_answer',
+                target_user: sender,
+                answer: answer
+            });
             
-            return true;
+            console.log(`Sent answer to ${sender}`);
         } catch (error) {
-            console.error('Error switching camera:', error);
-            return false;
+            console.error(`Error handling offer from ${sender}:`, error);
+        }
+    }
+
+    async handleAnswer(message) {
+        const { sender, answer } = message;
+        const peerConnection = this.peerConnections.get(sender);
+        
+        if (peerConnection) {
+            try {
+                await peerConnection.setRemoteDescription(answer);
+                console.log(`Set remote description from ${sender}`);
+            } catch (error) {
+                console.error(`Error setting remote description from ${sender}:`, error);
+            }
+        }
+    }
+
+    async handleIceCandidate(message) {
+        const { sender, candidate } = message;
+        const peerConnection = this.peerConnections.get(sender);
+        
+        if (peerConnection && peerConnection.remoteDescription) {
+            try {
+                await peerConnection.addIceCandidate(candidate);
+                console.log(`Added ICE candidate from ${sender}:`, candidate.type);
+            } catch (error) {
+                console.error(`Error adding ICE candidate from ${sender}:`, error);
+            }
+        } else {
+            console.warn(`Received ICE candidate from ${sender} but peer connection not ready`);
+        }
+    }
+
+    // Add connection diagnostics
+    async getConnectionStats(userId) {
+        const peerConnection = this.peerConnections.get(userId);
+        if (!peerConnection) return null;
+        
+        try {
+            const stats = await peerConnection.getStats();
+            const report = {};
+            
+            stats.forEach(stat => {
+                if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
+                    report.selectedCandidatePair = stat;
+                } else if (stat.type === 'local-candidate' && stat.id === report.selectedCandidatePair?.localCandidateId) {
+                    report.localCandidate = stat;
+                } else if (stat.type === 'remote-candidate' && stat.id === report.selectedCandidatePair?.remoteCandidateId) {
+                    report.remoteCandidate = stat;
+                }
+            });
+            
+            return report;
+        } catch (error) {
+            console.error(`Error getting stats for ${userId}:`, error);
+            return null;
+        }
+    }
+
+    // Add network type detection
+    async detectNetworkType() {
+        if ('connection' in navigator) {
+            const connection = navigator.connection;
+            console.log('Network info:', {
+                effectiveType: connection.effectiveType,
+                downlink: connection.downlink,
+                rtt: connection.rtt
+            });
         }
     }
 

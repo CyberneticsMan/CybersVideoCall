@@ -8,6 +8,11 @@ class RoomManager {
         this.isInitialized = false;
         this.currentTab = 'chat';
         this.participants = new Set();
+        this.connectionStatus = {
+            websocket: 'disconnected',
+            media: 'not-tested',
+            network: 'unknown'
+        };
     }
 
     async init() {
@@ -131,6 +136,13 @@ class RoomManager {
                 this.closeSettings();
             }
         });
+
+        // Connection testing
+        const connectionTestBtn = document.getElementById('connectionTestBtn');
+        connectionTestBtn?.addEventListener('click', () => this.testConnection());
+
+        // Initialize connection status monitoring
+        this.initConnectionStatus();
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
@@ -543,55 +555,173 @@ class RoomManager {
         modal?.classList.remove('show');
     }
 
-    handleKeyboardShortcuts(e) {
-        // Don't trigger shortcuts when typing in inputs
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            return;
-        }
-
-        switch (e.key.toLowerCase()) {
-            case 'm':
-                e.preventDefault();
-                this.toggleAudio();
-                break;
-            case 'v':
-                e.preventDefault();
-                this.toggleVideo();
-                break;
-            case 's':
-                if (e.ctrlKey || e.metaKey) {
-                    e.preventDefault();
-                    this.toggleScreenShare();
-                }
-                break;
-            case 'c':
-                e.preventDefault();
-                this.switchTab('chat');
-                break;
-            case 'w':
-                e.preventDefault();
-                this.switchTab('whiteboard');
-                break;
-            case 'p':
-                e.preventDefault();
-                this.switchTab('participants');
-                break;
-            case 'f':
-                if (e.ctrlKey || e.metaKey) {
-                    e.preventDefault();
-                    this.enterWhiteboardFullscreen();
-                }
-                break;
-            case 'escape':
-                this.exitAllFullscreenModes();
-                break;
+    initConnectionStatus() {
+        this.updateConnectionStatus('websocket', 'connecting');
+        this.detectNetworkType();
+        
+        // Monitor WebSocket connection
+        if (this.webrtc && this.webrtc.websocket) {
+            this.webrtc.websocket.addEventListener('open', () => {
+                this.updateConnectionStatus('websocket', 'connected');
+            });
+            
+            this.webrtc.websocket.addEventListener('close', () => {
+                this.updateConnectionStatus('websocket', 'disconnected');
+            });
+            
+            this.webrtc.websocket.addEventListener('error', () => {
+                this.updateConnectionStatus('websocket', 'disconnected');
+            });
         }
     }
 
-    handleResize() {
-        if (this.whiteboard && this.currentTab === 'whiteboard') {
-            this.whiteboard.resizeCanvas();
+    async detectNetworkType() {
+        try {
+            if ('connection' in navigator) {
+                const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                if (connection) {
+                    this.updateConnectionStatus('network', connection.effectiveType || 'unknown');
+                    
+                    connection.addEventListener('change', () => {
+                        this.updateConnectionStatus('network', connection.effectiveType || 'unknown');
+                    });
+                }
+            }
+            
+            // Fallback: Test connection speed
+            const startTime = Date.now();
+            await fetch('/static/images/test.png?' + Math.random()).catch(() => {});
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+            
+            let networkType = 'unknown';
+            if (duration < 100) networkType = 'fast';
+            else if (duration < 300) networkType = 'medium';
+            else networkType = 'slow';
+            
+            this.updateConnectionStatus('network', networkType);
+        } catch (error) {
+            console.warn('Network detection failed:', error);
+            this.updateConnectionStatus('network', 'unknown');
         }
+    }
+
+    async testConnection() {
+        const btn = document.getElementById('connectionTestBtn');
+        btn.textContent = 'Testing...';
+        btn.disabled = true;
+
+        try {
+            // Test media access
+            this.updateConnectionStatus('media', 'connecting');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                stream.getTracks().forEach(track => track.stop());
+                this.updateConnectionStatus('media', 'connected');
+            } catch (mediaError) {
+                console.warn('Media access test failed:', mediaError);
+                this.updateConnectionStatus('media', 'disconnected');
+            }
+
+            // Test WebSocket connection
+            if (this.webrtc && this.webrtc.websocket) {
+                if (this.webrtc.websocket.readyState === WebSocket.OPEN) {
+                    this.updateConnectionStatus('websocket', 'connected');
+                } else {
+                    this.updateConnectionStatus('websocket', 'disconnected');
+                }
+            }
+
+            // Test STUN/TURN connectivity
+            await this.testSTUNConnectivity();
+
+            this.showNotification('Connection test completed', 'success');
+        } catch (error) {
+            console.error('Connection test failed:', error);
+            this.showNotification('Connection test failed: ' + error.message, 'error');
+        } finally {
+            btn.textContent = 'Test Connection';
+            btn.disabled = false;
+        }
+    }
+
+    async testSTUNConnectivity() {
+        return new Promise((resolve) => {
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            });
+
+            let resolved = false;
+            const timeout = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    pc.close();
+                    console.warn('STUN connectivity test timed out');
+                    resolve(false);
+                }
+            }, 5000);
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate && event.candidate.candidate.includes('srflx')) {
+                    if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeout);
+                        pc.close();
+                        console.log('STUN connectivity test successful');
+                        resolve(true);
+                    }
+                }
+            };
+
+            pc.createDataChannel('test');
+            pc.createOffer().then(offer => pc.setLocalDescription(offer));
+        });
+    }
+
+    updateConnectionStatus(type, status) {
+        this.connectionStatus[type] = status;
+        
+        const statusElement = document.getElementById(`${type === 'websocket' ? 'ws' : type}Status`);
+        if (statusElement) {
+            statusElement.textContent = this.formatStatusText(status);
+            statusElement.className = `status-indicator ${this.getStatusClass(status)}`;
+        }
+    }
+
+    formatStatusText(status) {
+        const statusMap = {
+            'connected': 'Connected',
+            'connecting': 'Connecting...',
+            'disconnected': 'Disconnected',
+            'not-tested': 'Not tested',
+            'unknown': 'Unknown',
+            'fast': 'Fast',
+            'medium': 'Medium',
+            'slow': 'Slow',
+            '4g': '4G',
+            '3g': '3G',
+            '2g': '2G',
+            'wifi': 'WiFi'
+        };
+        return statusMap[status] || status;
+    }
+
+    getStatusClass(status) {
+        if (['connected', 'fast', '4g', 'wifi'].includes(status)) {
+            return 'connected';
+        } else if (['connecting', 'medium', '3g'].includes(status)) {
+            return 'connecting';
+        } else if (['disconnected', 'slow', '2g'].includes(status)) {
+            return 'disconnected';
+        }
+        return 'unknown';
     }
 
     escapeHtml(text) {

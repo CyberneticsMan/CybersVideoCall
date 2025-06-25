@@ -203,6 +203,28 @@
         </div>
     </div>
 
+    <!-- Connection Status Panel -->
+    <div class="connection-panel">
+        <div class="connection-header">
+            <h3>🔗 Connection Status</h3>
+            <button id="connectionTestBtn" class="btn-secondary">Test Connection</button>
+        </div>
+        <div id="connectionStatus" class="connection-status-list">
+            <div class="status-item">
+                <span class="status-label">WebSocket:</span>
+                <span id="wsStatus" class="status-indicator">Disconnected</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Media Access:</span>
+                <span id="mediaStatus" class="status-indicator">Not tested</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Network Type:</span>
+                <span id="networkType" class="status-indicator">Unknown</span>
+            </div>
+        </div>
+    </div>
+
     <script>
         const ROOM_ID = "{{ room_id }}";
     </script>

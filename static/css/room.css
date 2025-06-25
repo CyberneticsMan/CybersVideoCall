@@ -682,6 +682,93 @@
     50% { opacity: 0.7; }
 }
 
+/* Connection Status Panel */
+.connection-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.9);
+    border-radius: 8px;
+    padding: 15px;
+    min-width: 250px;
+    z-index: 1000;
+    color: white;
+    font-size: 14px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.connection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 8px;
+}
+
+.connection-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #4CAF50;
+}
+
+.connection-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-label {
+    color: #ccc;
+}
+
+.status-indicator {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.status-indicator.connected {
+    background: #4CAF50;
+    color: white;
+}
+
+.status-indicator.connecting {
+    background: #FF9800;
+    color: white;
+}
+
+.status-indicator.disconnected {
+    background: #f44336;
+    color: white;
+}
+
+.status-indicator.unknown {
+    background: #666;
+    color: white;
+}
+
+.btn-secondary {
+    background: #666;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-secondary:hover {
+    background: #777;
+}
+
 /* Responsive Design for Room */
 @media (max-width: 768px) {
     .room-container {

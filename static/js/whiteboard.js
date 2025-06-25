@@ -42,8 +42,17 @@ class WhiteboardManager {
     setupCanvas() {
         // Set canvas size to match container
         const container = this.canvas.parentElement;
-        this.canvas.width = container.clientWidth;
-        this.canvas.height = container.clientHeight - 60; // Account for toolbar
+        if (!container) {
+            console.warn('Canvas container not found, using default dimensions');
+            this.canvas.width = 800;
+            this.canvas.height = 600;
+        } else {
+            const containerWidth = container.clientWidth || 800;
+            const containerHeight = Math.max(container.clientHeight - 60, 400); // Account for toolbar with minimum height
+            
+            this.canvas.width = containerWidth;
+            this.canvas.height = containerHeight;
+        }
         
         // Set default drawing properties
         this.ctx.lineCap = 'round';
@@ -58,9 +67,21 @@ class WhiteboardManager {
     }
 
     setupFullscreenCanvas() {
-        // Set canvas size to viewport
-        this.fullscreenCanvas.width = window.innerWidth;
-        this.fullscreenCanvas.height = window.innerHeight - 70; // Account for header
+        if (!this.fullscreenCanvas) return;
+        
+        // Ensure we have valid viewport dimensions
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight - 70; // Account for header
+        
+        if (viewportWidth <= 0 || viewportHeight <= 0) {
+            console.warn('Invalid viewport dimensions, using fallback');
+            this.fullscreenCanvas.width = 800;
+            this.fullscreenCanvas.height = 600;
+        } else {
+            // Set canvas size to viewport
+            this.fullscreenCanvas.width = viewportWidth;
+            this.fullscreenCanvas.height = viewportHeight;
+        }
         
         // Set drawing properties
         this.fullscreenCtx.lineCap = 'round';
@@ -68,8 +89,10 @@ class WhiteboardManager {
         this.fullscreenCtx.strokeStyle = this.currentColor;
         this.fullscreenCtx.lineWidth = this.currentSize;
         
-        // Copy current whiteboard content
-        this.syncToFullscreen();
+        // Copy current whiteboard content only if main canvas has valid dimensions
+        if (this.canvas && this.canvas.width > 0 && this.canvas.height > 0) {
+            this.syncToFullscreen();
+        }
     }
 
     resizeCanvas() {
@@ -77,8 +100,8 @@ class WhiteboardManager {
         if (!container) return;
         
         // Get current dimensions
-        const containerWidth = container.clientWidth;
-        const containerHeight = container.clientHeight - 60; // Account for toolbar
+        const containerWidth = container.clientWidth || 800;
+        const containerHeight = Math.max(container.clientHeight - 60, 400); // Account for toolbar with minimum height
         
         // Don't resize if container has no dimensions yet
         if (containerWidth <= 0 || containerHeight <= 0) {
@@ -625,6 +648,13 @@ class WhiteboardManager {
     syncToFullscreen() {
         if (!this.fullscreenCanvas || !this.canvas) return;
         
+        // Check if canvases have valid dimensions
+        if (this.canvas.width === 0 || this.canvas.height === 0 || 
+            this.fullscreenCanvas.width === 0 || this.fullscreenCanvas.height === 0) {
+            console.warn('Canvas has zero dimensions, skipping sync');
+            return;
+        }
+        
         // Clear fullscreen canvas
         this.fullscreenCtx.clearRect(0, 0, this.fullscreenCanvas.width, this.fullscreenCanvas.height);
         
@@ -647,6 +677,13 @@ class WhiteboardManager {
     syncFromFullscreen() {
         if (!this.fullscreenCanvas || !this.canvas) return;
         
+        // Check if canvases have valid dimensions
+        if (this.canvas.width === 0 || this.canvas.height === 0 || 
+            this.fullscreenCanvas.width === 0 || this.fullscreenCanvas.height === 0) {
+            console.warn('Canvas has zero dimensions, skipping sync');
+            return;
+        }
+        
         // Scale down fullscreen content to main canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -664,13 +701,20 @@ class WhiteboardManager {
     enterFullscreen() {
         const fullscreenModal = document.getElementById('whiteboardFullscreen');
         if (fullscreenModal) {
-            this.setupFullscreenCanvas();
+            // Wait for modal to be visible before setting up canvas
             fullscreenModal.classList.add('active');
             
-            // Focus on canvas for better interaction
+            // Use a timeout to ensure the modal is fully rendered
             setTimeout(() => {
-                this.fullscreenCanvas.focus();
-            }, 100);
+                this.setupFullscreenCanvas();
+                
+                // Focus on canvas for better interaction
+                setTimeout(() => {
+                    if (this.fullscreenCanvas) {
+                        this.fullscreenCanvas.focus();
+                    }
+                }, 100);
+            }, 50);
         }
     }
 

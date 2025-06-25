@@ -39,11 +39,13 @@ class ConnectionManager:
         self.user_rooms: Dict[str, str] = {}
         # Add heartbeat tracking
         self.heartbeats: Dict[str, float] = {}
-        self.start_heartbeat_monitor()
+        self.heartbeat_task = None
     
-    def start_heartbeat_monitor(self):
+    async def start_heartbeat_monitor(self):
         """Start monitoring heartbeats to detect dead connections"""
-        import asyncio
+        if self.heartbeat_task is not None:
+            return  # Already running
+        
         import time
         
         async def heartbeat_monitor():
@@ -53,17 +55,21 @@ class ConnectionManager:
                 dead_connections = []
                 
                 for user_id, last_heartbeat in self.heartbeats.items():
-                    if current_time - last_heartbeat > 60:  # 60 seconds timeout
+                    if current_time - last_heartbeat > 60: # 60 seconds timeout
                         dead_connections.append(user_id)
                 
                 for user_id in dead_connections:
                     logger.info(f"Cleaning up dead connection for user {user_id}")
                     self.disconnect(user_id)
         
-        asyncio.create_task(heartbeat_monitor())
+        self.heartbeat_task = asyncio.create_task(heartbeat_monitor())
     
     async def connect(self, websocket: WebSocket, user_id: str):
         """Connect a new user"""
+        # Start heartbeat monitor if this is the first connection
+        if not self.heartbeat_task:
+            await self.start_heartbeat_monitor()
+        
         # If user already exists, disconnect old connection first
         if user_id in self.active_connections:
             logger.info(f"User {user_id} reconnecting, cleaning up old connection")
@@ -71,6 +77,7 @@ class ConnectionManager:
         
         await websocket.accept()
         self.active_connections[user_id] = websocket
+        import time
         self.heartbeats[user_id] = time.time()
         logger.info(f"User {user_id} connected")
     
@@ -246,7 +253,15 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             data = await websocket.receive_text()
             message = json.loads(data)
             
+            # Update heartbeat for any message received
+            manager.update_heartbeat(user_id)
+            
             message_type = message.get("type")
+            
+            # Handle heartbeat messages
+            if message_type == "heartbeat":
+                # Just updating heartbeat is enough, no response needed
+                continue
             
             if message_type == "join_room":
                 room_id = message.get("room_id")

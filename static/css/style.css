@@ -263,37 +263,123 @@ body {
     margin-top: auto;
 }
 
-/* Responsive Design */
+/* Mobile-first responsive design improvements */
 @media (max-width: 768px) {
     .container {
-        padding: 0 15px;
+        padding: 0 10px;
     }
     
     .header {
-        margin: 0 -15px 30px;
-        padding: 40px 20px 30px;
+        margin: 0 -10px 20px;
+        padding: 30px 15px 25px;
     }
     
     .header h1 {
-        font-size: 2rem;
+        font-size: 1.8rem;
+    }
+    
+    .header p {
+        font-size: 1rem;
     }
     
     .welcome-section {
-        padding: 30px 20px;
+        padding: 20px 15px;
+        margin-bottom: 20px;
+    }
+    
+    .welcome-section h2 {
+        font-size: 1.5rem;
     }
     
     .features-grid {
         grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .feature-card {
+        padding: 20px 15px;
+    }
+    
+    .feature-icon {
+        font-size: 2.5rem;
     }
     
     .input-group {
         flex-direction: column;
+        gap: 12px;
     }
     
     .input-group input,
     .btn {
         width: 100%;
+        padding: 16px 20px; /* Larger touch targets */
+        font-size: 16px; /* Prevent zoom on iOS */
     }
+    
+    .active-rooms {
+        padding: 20px 15px;
+    }
+    
+    .room-item {
+        padding: 16px;
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+    }
+}
+
+/* Touch-friendly improvements for all screen sizes */
+.btn {
+    min-height: 44px; /* iOS recommended touch target size */
+    transition: transform 0.1s ease;
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+/* Improved focus states for accessibility */
+.btn:focus,
+input:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* Prevent text selection on interactive elements */
+.btn, .feature-card {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* Smooth animations for better UX */
+.feature-card, .room-item {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Add loading states */
+.btn.loading {
+    opacity: 0.7;
+    pointer-events: none;
+    position: relative;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 /* Utility Classes */

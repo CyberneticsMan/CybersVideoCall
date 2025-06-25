@@ -9,6 +9,9 @@ class WebRTCManager {
         this.isScreenSharing = false;
         this.websocket = null;
         this.userId = this.generateUserId();
+        this.heartbeatInterval = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
         
         // WebRTC configuration with STUN servers
         this.rtcConfiguration = {
@@ -36,7 +39,13 @@ class WebRTCManager {
     }
 
     generateUserId() {
-        return 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        // Use sessionStorage to maintain same user ID during session
+        let userId = sessionStorage.getItem('videoCallUserId');
+        if (!userId) {
+            userId = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+            sessionStorage.setItem('videoCallUserId', userId);
+        }
+        return userId;
     }
 
     async init(roomId) {
@@ -88,6 +97,8 @@ class WebRTCManager {
             
             this.websocket.onopen = () => {
                 console.log('WebSocket connected');
+                this.reconnectAttempts = 0;
+                this.startHeartbeat();
                 resolve();
             };
             
@@ -95,10 +106,16 @@ class WebRTCManager {
                 this.handleWebSocketMessage(JSON.parse(event.data));
             };
             
-            this.websocket.onclose = () => {
-                console.log('WebSocket disconnected');
-                // Attempt to reconnect after 3 seconds
-                setTimeout(() => this.connectWebSocket(), 3000);
+            this.websocket.onclose = (event) => {
+                console.log('WebSocket disconnected', event.code, event.reason);
+                this.stopHeartbeat();
+                
+                // Don't reconnect if it was a clean close (user left intentionally)
+                if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                    setTimeout(() => this.connectWebSocket(), 3000 * this.reconnectAttempts);
+                }
             };
             
             this.websocket.onerror = (error) => {
@@ -106,6 +123,22 @@ class WebRTCManager {
                 reject(error);
             };
         });
+    }
+
+    startHeartbeat() {
+        this.stopHeartbeat(); // Clear any existing interval
+        this.heartbeatInterval = setInterval(() => {
+            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                this.sendMessage({ type: 'heartbeat' });
+            }
+        }, 30000); // Send heartbeat every 30 seconds
+    }
+
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
     }
 
     sendMessage(message) {
@@ -507,6 +540,14 @@ class WebRTCManager {
     }
 
     disconnect() {
+        // Stop heartbeat
+        this.stopHeartbeat();
+        
+        // Send leave room message before disconnecting
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.sendMessage({ type: 'leave_room' });
+        }
+        
         // Stop all tracks
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => track.stop());
@@ -520,9 +561,9 @@ class WebRTCManager {
         this.peerConnections.forEach(pc => pc.close());
         this.peerConnections.clear();
         
-        // Close WebSocket
+        // Close WebSocket cleanly
         if (this.websocket) {
-            this.websocket.close();
+            this.websocket.close(1000, 'User left'); // Clean close
         }
         
         console.log('WebRTC disconnected');

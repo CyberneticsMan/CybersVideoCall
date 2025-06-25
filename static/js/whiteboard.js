@@ -130,32 +130,52 @@ class WhiteboardManager {
         this.canvas.addEventListener('mouseup', () => this.stopDrawing());
         this.canvas.addEventListener('mouseout', () => this.stopDrawing());
 
-        // Touch events for mobile
-        this.canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
+        // Enhanced touch events for mobile with better handling
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+        this.canvas.addEventListener('touchcancel', (e) => this.handleTouchEnd(e));
+
+        // Prevent default touch behaviors
+        this.canvas.addEventListener('touchstart', this.preventDefaultTouch, { passive: false });
+        this.canvas.addEventListener('touchmove', this.preventDefaultTouch, { passive: false });
+    }
+
+    preventDefaultTouch(e) {
+        e.preventDefault();
+    }
+
+    handleTouchStart(e) {
+        e.preventDefault();
+        if (e.touches.length === 1) {
             const touch = e.touches[0];
+            const rect = this.canvas.getBoundingClientRect();
             const mouseEvent = new MouseEvent('mousedown', {
                 clientX: touch.clientX,
                 clientY: touch.clientY
             });
-            this.canvas.dispatchEvent(mouseEvent);
-        });
+            this.startDrawing(mouseEvent);
+        }
+    }
 
-        this.canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
+    handleTouchMove(e) {
+        e.preventDefault();
+        if (e.touches.length === 1 && this.isDrawing) {
             const touch = e.touches[0];
+            const rect = this.canvas.getBoundingClientRect();
             const mouseEvent = new MouseEvent('mousemove', {
                 clientX: touch.clientX,
                 clientY: touch.clientY
             });
-            this.canvas.dispatchEvent(mouseEvent);
-        });
+            this.draw(mouseEvent);
+        }
+    }
 
-        this.canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            const mouseEvent = new MouseEvent('mouseup', {});
-            this.canvas.dispatchEvent(mouseEvent);
-        });
+    handleTouchEnd(e) {
+        e.preventDefault();
+        if (this.isDrawing) {
+            this.stopDrawing();
+        }
     }
 
     selectTool(tool) {

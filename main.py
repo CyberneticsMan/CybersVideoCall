@@ -37,17 +37,70 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         self.rooms: Dict[str, Set[str]] = {}
         self.user_rooms: Dict[str, str] = {}
+        # Add heartbeat tracking
+        self.heartbeats: Dict[str, float] = {}
+        self.start_heartbeat_monitor()
+    
+    def start_heartbeat_monitor(self):
+        """Start monitoring heartbeats to detect dead connections"""
+        import asyncio
+        import time
+        
+        async def heartbeat_monitor():
+            while True:
+                await asyncio.sleep(30)  # Check every 30 seconds
+                current_time = time.time()
+                dead_connections = []
+                
+                for user_id, last_heartbeat in self.heartbeats.items():
+                    if current_time - last_heartbeat > 60:  # 60 seconds timeout
+                        dead_connections.append(user_id)
+                
+                for user_id in dead_connections:
+                    logger.info(f"Cleaning up dead connection for user {user_id}")
+                    self.disconnect(user_id)
+        
+        asyncio.create_task(heartbeat_monitor())
     
     async def connect(self, websocket: WebSocket, user_id: str):
         """Connect a new user"""
+        # If user already exists, disconnect old connection first
+        if user_id in self.active_connections:
+            logger.info(f"User {user_id} reconnecting, cleaning up old connection")
+            await self.force_disconnect(user_id)
+        
         await websocket.accept()
         self.active_connections[user_id] = websocket
+        self.heartbeats[user_id] = time.time()
         logger.info(f"User {user_id} connected")
+    
+    async def force_disconnect(self, user_id: str):
+        """Force disconnect a user and notify others"""
+        if user_id in self.active_connections:
+            try:
+                old_websocket = self.active_connections[user_id]
+                await old_websocket.close()
+            except:
+                pass  # Connection might already be dead
+        
+        # Clean up and notify others
+        if user_id in self.user_rooms:
+            room_id = self.user_rooms[user_id]
+            await self.broadcast_to_room(room_id, {
+                "type": "user_left",
+                "user_id": user_id,
+                "timestamp": datetime.now().isoformat()
+            }, exclude_user=user_id)
+        
+        self.disconnect(user_id)
     
     def disconnect(self, user_id: str):
         """Disconnect a user and clean up"""
         if user_id in self.active_connections:
             del self.active_connections[user_id]
+        
+        if user_id in self.heartbeats:
+            del self.heartbeats[user_id]
         
         # Remove from room
         if user_id in self.user_rooms:
@@ -59,7 +112,12 @@ class ConnectionManager:
             del self.user_rooms[user_id]
         
         logger.info(f"User {user_id} disconnected")
-    
+
+    def update_heartbeat(self, user_id: str):
+        """Update heartbeat timestamp for a user"""
+        import time
+        self.heartbeats[user_id] = time.time()
+
     async def join_room(self, user_id: str, room_id: str):
         """Add user to a room"""
         if room_id not in self.rooms:

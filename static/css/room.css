@@ -428,70 +428,302 @@
 
 /* Responsive Design for Room */
 @media (max-width: 768px) {
-    .room-content {
-        flex-direction: column;
+    .room-container {
+        height: 100vh;
+        height: 100dvh; /* Dynamic viewport height for mobile browsers */
     }
     
-    .sidebar {
-        width: 100%;
-        height: 300px;
-        border-left: none;
-        border-top: 1px solid var(--border-color);
+    .room-header {
+        padding: 12px 15px;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+    
+    .room-info h2 {
+        font-size: 1.2rem;
+        margin-bottom: 2px;
+    }
+    
+    .participant-count {
+        font-size: 0.8rem;
+    }
+    
+    .header-controls {
+        justify-content: center;
+        gap: 8px;
+    }
+    
+    .room-content {
+        flex-direction: column;
+        height: calc(100vh - 120px); /* Account for header and controls */
+        height: calc(100dvh - 120px);
+    }
+    
+    .video-section {
+        flex: 1;
+        padding: 10px;
+        min-height: 200px;
     }
     
     .video-grid {
         grid-template-columns: 1fr;
+        gap: 10px;
+        grid-auto-rows: minmax(150px, 1fr);
+    }
+    
+    .video-container {
+        min-height: 150px;
+    }
+    
+    .video-overlay {
+        padding: 8px 12px;
+    }
+    
+    .video-label {
+        font-size: 0.8rem;
+    }
+    
+    .video-controls {
+        gap: 6px;
+    }
+    
+    .video-controls .control-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 0.9rem;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: 50vh;
+        max-height: 400px;
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+        order: 2;
+    }
+    
+    .sidebar-tabs {
+        padding: 0 5px;
+    }
+    
+    .tab-btn {
+        padding: 12px 8px;
+        font-size: 0.8rem;
+        min-height: 44px;
+    }
+    
+    .chat-messages {
+        padding: 15px;
+        gap: 12px;
+        font-size: 0.9rem;
+    }
+    
+    .chat-input-container {
+        padding: 15px;
+        gap: 8px;
+    }
+    
+    .chat-input-container input {
+        padding: 12px 15px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .chat-input-container .btn {
+        padding: 12px 20px;
+        min-width: 60px;
+    }
+    
+    .whiteboard-tools {
+        padding: 10px;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .tool-btn {
+        padding: 10px 12px;
+        font-size: 1.1rem;
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    #colorPicker {
+        width: 44px;
+        height: 44px;
+    }
+    
+    #brushSize {
+        width: 100px;
+        height: 44px;
+    }
+    
+    #whiteboardCanvas {
+        height: calc(50vh - 120px);
+        touch-action: none; /* Prevent scrolling while drawing */
+    }
+    
+    .participants-list {
+        padding: 15px;
+        gap: 12px;
+    }
+    
+    .participant-item {
+        padding: 12px;
+    }
+    
+    .participant-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+    
+    .bottom-controls {
+        padding: 12px 15px;
+        position: sticky;
+        bottom: 0;
+        z-index: 20;
     }
     
     .control-group {
-        gap: 10px;
+        gap: 12px;
+        justify-content: space-around;
     }
     
     .control-btn {
         width: 50px;
         height: 50px;
         font-size: 1.2rem;
+        border-width: 1px;
     }
     
-    .room-header {
-        flex-direction: column;
-        gap: 10px;
-        text-align: center;
+    .control-btn.large {
+        width: 50px;
+        height: 50px;
     }
     
-    .header-controls {
-        justify-content: center;
+    /* Modal improvements for mobile */
+    .modal {
+        padding: 20px;
+        align-items: flex-end;
+    }
+    
+    .modal-content {
+        width: 100%;
+        max-height: 70vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        margin: 0;
+    }
+    
+    .modal-header {
+        padding: 15px 20px;
+    }
+    
+    .modal-body {
+        padding: 15px 20px 20px;
+    }
+    
+    .setting-group {
+        margin-bottom: 16px;
+    }
+    
+    .setting-group select,
+    .setting-group input {
+        padding: 14px 16px;
+        font-size: 16px; /* Prevent zoom on iOS */
+        min-height: 44px;
     }
 }
 
-/* Screen sharing overlay */
-.screen-share-overlay {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: var(--warning-color);
-    color: white;
-    padding: 5px 10px;
-    border-radius: var(--radius);
-    font-size: 0.8rem;
-    font-weight: 600;
+/* Touch interactions and gestures */
+.control-btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
-/* Connection status indicators */
-.connection-status {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--success-color);
+.control-btn:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
 }
 
-.connection-status.poor {
-    background: var(--warning-color);
+/* Improved whiteboard touch handling */
+#whiteboardCanvas {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
-.connection-status.disconnected {
-    background: var(--danger-color);
+/* Better video container sizing on mobile */
+@media (max-width: 480px) {
+    .video-grid {
+        grid-auto-rows: minmax(120px, 1fr);
+    }
+    
+    .video-container {
+        min-height: 120px;
+    }
+    
+    .control-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 1.1rem;
+    }
+    
+    .sidebar {
+        height: 45vh;
+    }
+    
+    .chat-message {
+        padding: 10px 12px;
+        font-size: 0.85rem;
+    }
+    
+    .whiteboard-tools {
+        padding: 8px;
+        gap: 6px;
+    }
+    
+    .tool-btn {
+        padding: 8px 10px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+}
+
+/* Landscape orientation optimizations for mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .room-content {
+        flex-direction: row;
+    }
+    
+    .video-section {
+        flex: 2;
+    }
+    
+    .sidebar {
+        width: 300px;
+        height: auto;
+        border-left: 1px solid var(--border-color);
+        border-top: none;
+    }
+    
+    .video-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-appearance: none) {
+    .room-container {
+        height: 100vh;
+        height: -webkit-fill-available;
+    }
+    
+    .room-content {
+        height: calc(100vh - 120px);
+        height: calc(-webkit-fill-available - 120px);
+    }
 }

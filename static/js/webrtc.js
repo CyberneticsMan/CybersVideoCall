@@ -289,6 +289,13 @@ class WebRTCManager {
         }
     }
 
+    removeVideoElement(userId) {
+        const videoContainer = document.getElementById(`video-${userId}`);
+        if (videoContainer) {
+            videoContainer.remove();
+        }
+    }
+
     addRemoteVideo(userId, stream) {
         // Remove existing video element if any
         this.removeVideoElement(userId);

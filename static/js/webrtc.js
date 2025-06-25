@@ -303,6 +303,13 @@ class WebRTCManager {
         video.playsinline = true;
         video.srcObject = stream;
         
+        // Add fullscreen button
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'video-fullscreen-btn';
+        fullscreenBtn.innerHTML = '⛶';
+        fullscreenBtn.title = 'Fullscreen';
+        fullscreenBtn.onclick = () => this.enterVideoFullscreen(video, userId);
+        
         const overlay = document.createElement('div');
         overlay.className = 'video-overlay';
         
@@ -317,17 +324,140 @@ class WebRTCManager {
         overlay.appendChild(label);
         overlay.appendChild(connectionStatus);
         videoContainer.appendChild(video);
+        videoContainer.appendChild(fullscreenBtn);
         videoContainer.appendChild(overlay);
+        
+        // Add click to fullscreen functionality
+        videoContainer.addEventListener('dblclick', () => {
+            this.enterVideoFullscreen(video, userId);
+        });
         
         // Add to video grid
         const videoGrid = document.getElementById('videoGrid');
         videoGrid.appendChild(videoContainer);
     }
 
-    removeVideoElement(userId) {
-        const videoElement = document.getElementById(`video-${userId}`);
-        if (videoElement) {
-            videoElement.remove();
+    enterVideoFullscreen(videoElement, userId) {
+        const overlay = document.getElementById('fullscreenOverlay');
+        const fullscreenVideo = document.getElementById('fullscreenVideo');
+        const fullscreenTitle = document.getElementById('fullscreenTitle');
+        
+        // Clone the video stream
+        fullscreenVideo.srcObject = videoElement.srcObject;
+        fullscreenTitle.textContent = userId === 'local' ? 'You (Local)' : `${userId.replace('user_', '').substring(0, 8)} (Remote)`;
+        
+        overlay.classList.add('active');
+        overlay.dataset.userId = userId;
+        
+        // Store reference for PiP
+        this.currentFullscreenVideo = {
+            element: fullscreenVideo,
+            userId: userId,
+            originalVideo: videoElement
+        };
+    }
+
+    exitVideoFullscreen() {
+        const overlay = document.getElementById('fullscreenOverlay');
+        overlay.classList.remove('active');
+        this.currentFullscreenVideo = null;
+    }
+
+    async enablePictureInPicture() {
+        if (!this.currentFullscreenVideo) return;
+        
+        try {
+            const pipContainer = document.getElementById('pipContainer');
+            const pipVideo = document.getElementById('pipVideo');
+            
+            // Clone stream to PiP video
+            pipVideo.srcObject = this.currentFullscreenVideo.element.srcObject;
+            pipContainer.classList.add('active');
+            
+            // Exit fullscreen
+            this.exitVideoFullscreen();
+            
+            // Enable dragging for PiP
+            this.makePipDraggable();
+            
+        } catch (error) {
+            console.error('PiP not supported:', error);
+            // Fallback to browser's native PiP if available
+            if (this.currentFullscreenVideo.element.requestPictureInPicture) {
+                await this.currentFullscreenVideo.element.requestPictureInPicture();
+            }
+        }
+    }
+
+    makePipDraggable() {
+        const pipContainer = document.getElementById('pipContainer');
+        let isDragging = false;
+        let currentX, currentY, initialX, initialY;
+        
+        pipContainer.addEventListener('mousedown', (e) => {
+            initialX = e.clientX - pipContainer.offsetLeft;
+            initialY = e.clientY - pipContainer.offsetTop;
+            isDragging = true;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+                
+                pipContainer.style.left = currentX + 'px';
+                pipContainer.style.top = currentY + 'px';
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+    }
+
+    closePictureInPicture() {
+        const pipContainer = document.getElementById('pipContainer');
+        pipContainer.classList.remove('active');
+    }
+
+    async handleOffer(message) {
+        const { sender, offer } = message;
+        
+        // Create peer connection if it doesn't exist
+        if (!this.peerConnections.has(sender)) {
+            await this.createPeerConnection(sender);
+        }
+        
+        const peerConnection = this.peerConnections.get(sender);
+        await peerConnection.setRemoteDescription(offer);
+        
+        // Create and send answer
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        this.sendMessage({
+            type: 'webrtc_answer',
+            target_user: sender,
+            answer: answer
+        });
+    }
+
+    async handleAnswer(message) {
+        const { sender, answer } = message;
+        const peerConnection = this.peerConnections.get(sender);
+        
+        if (peerConnection) {
+            await peerConnection.setRemoteDescription(answer);
+        }
+    }
+
+    async handleIceCandidate(message) {
+        const { sender, candidate } = message;
+        const peerConnection = this.peerConnections.get(sender);
+        
+        if (peerConnection) {
+            await peerConnection.addIceCandidate(candidate);
         }
     }
 

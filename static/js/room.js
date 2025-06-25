@@ -72,6 +72,44 @@ class RoomManager {
         toggleWhiteboardBtn?.addEventListener('click', () => this.switchTab('whiteboard'));
         toggleChatBtn?.addEventListener('click', () => this.switchTab('chat'));
 
+        // Fullscreen controls
+        const fullscreenWhiteboardBtn = document.getElementById('fullscreenWhiteboardBtn');
+        const exitWhiteboardFullscreen = document.getElementById('exitWhiteboardFullscreen');
+        
+        fullscreenWhiteboardBtn?.addEventListener('click', () => this.enterWhiteboardFullscreen());
+        exitWhiteboardFullscreen?.addEventListener('click', () => this.exitWhiteboardFullscreen());
+
+        // Fullscreen video controls
+        const fullscreenClose = document.getElementById('fullscreenClose');
+        const fullscreenToggleVideo = document.getElementById('fullscreenToggleVideo');
+        const fullscreenToggleAudio = document.getElementById('fullscreenToggleAudio');
+        const fullscreenPip = document.getElementById('fullscreenPip');
+        const fullscreenShare = document.getElementById('fullscreenShare');
+
+        fullscreenClose?.addEventListener('click', () => this.exitVideoFullscreen());
+        fullscreenToggleVideo?.addEventListener('click', () => this.toggleVideo());
+        fullscreenToggleAudio?.addEventListener('click', () => this.toggleAudio());
+        fullscreenPip?.addEventListener('click', () => this.enablePictureInPicture());
+        fullscreenShare?.addEventListener('click', () => this.toggleScreenShare());
+
+        // Picture-in-Picture controls
+        const pipExpand = document.getElementById('pipExpand');
+        const pipClose = document.getElementById('pipClose');
+        
+        pipExpand?.addEventListener('click', () => this.expandFromPiP());
+        pipClose?.addEventListener('click', () => this.closePictureInPicture());
+
+        // Local video fullscreen (double-click on local video)
+        const localVideoContainer = document.querySelector('.local-video');
+        if (localVideoContainer) {
+            localVideoContainer.addEventListener('dblclick', () => {
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo) {
+                    this.webrtc.enterVideoFullscreen(localVideo, 'local');
+                }
+            });
+        }
+
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -100,6 +138,13 @@ class RoomManager {
         // Window events
         window.addEventListener('beforeunload', () => this.cleanup());
         window.addEventListener('resize', () => this.handleResize());
+
+        // Escape key to exit fullscreen modes
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.exitAllFullscreenModes();
+            }
+        });
     }
 
     initChat() {
@@ -300,19 +345,82 @@ class RoomManager {
         });
     }
 
+    enterWhiteboardFullscreen() {
+        if (this.whiteboard) {
+            this.whiteboard.enterFullscreen();
+            this.showNotification('Press ESC to exit fullscreen', 'info');
+        }
+    }
+
+    exitWhiteboardFullscreen() {
+        if (this.whiteboard) {
+            this.whiteboard.exitFullscreen();
+        }
+    }
+
+    exitVideoFullscreen() {
+        if (this.webrtc) {
+            this.webrtc.exitVideoFullscreen();
+        }
+    }
+
+    async enablePictureInPicture() {
+        if (this.webrtc) {
+            await this.webrtc.enablePictureInPicture();
+            this.showNotification('Picture-in-Picture enabled', 'success');
+        }
+    }
+
+    expandFromPiP() {
+        const pipContainer = document.getElementById('pipContainer');
+        const pipVideo = document.getElementById('pipVideo');
+        
+        if (pipVideo && pipVideo.srcObject) {
+            // Get the user ID from the PiP video source
+            const userId = pipContainer.dataset.userId || 'unknown';
+            this.webrtc.enterVideoFullscreen(pipVideo, userId);
+            this.closePictureInPicture();
+        }
+    }
+
+    closePictureInPicture() {
+        if (this.webrtc) {
+            this.webrtc.closePictureInPicture();
+        }
+    }
+
+    exitAllFullscreenModes() {
+        // Exit video fullscreen
+        const videoFullscreen = document.getElementById('fullscreenOverlay');
+        if (videoFullscreen && videoFullscreen.classList.contains('active')) {
+            this.exitVideoFullscreen();
+        }
+
+        // Exit whiteboard fullscreen
+        const whiteboardFullscreen = document.getElementById('whiteboardFullscreen');
+        if (whiteboardFullscreen && whiteboardFullscreen.classList.contains('active')) {
+            this.exitWhiteboardFullscreen();
+        }
+    }
+
     async toggleScreenShare() {
         if (this.webrtc) {
             const shareBtn = document.getElementById('shareScreenBtn');
+            const indicator = document.getElementById('screenShareIndicator');
             
             if (this.webrtc.isScreenSharing) {
                 await this.webrtc.stopScreenShare();
                 shareBtn?.classList.remove('active');
+                indicator?.classList.remove('active');
                 shareBtn.title = 'Share screen';
+                this.showNotification('Screen sharing stopped', 'info');
             } else {
                 const success = await this.webrtc.startScreenShare();
                 if (success) {
                     shareBtn?.classList.add('active');
+                    indicator?.classList.add('active');
                     shareBtn.title = 'Stop sharing';
+                    this.showNotification('Screen sharing started', 'success');
                 } else {
                     this.showNotification('Failed to start screen sharing', 'error');
                 }
@@ -467,6 +575,15 @@ class RoomManager {
             case 'p':
                 e.preventDefault();
                 this.switchTab('participants');
+                break;
+            case 'f':
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    this.enterWhiteboardFullscreen();
+                }
+                break;
+            case 'escape':
+                this.exitAllFullscreenModes();
                 break;
         }
     }

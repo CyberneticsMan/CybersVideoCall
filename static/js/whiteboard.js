@@ -25,8 +25,18 @@ class WhiteboardManager {
         this.ctx = this.canvas.getContext('2d');
         this.setupCanvas();
         this.bindEvents();
+        this.initFullscreenWhiteboard();
         
         console.log('Whiteboard initialized');
+    }
+
+    initFullscreenWhiteboard() {
+        this.fullscreenCanvas = document.getElementById('whiteboardFullscreenCanvas');
+        if (this.fullscreenCanvas) {
+            this.fullscreenCtx = this.fullscreenCanvas.getContext('2d');
+            this.setupFullscreenCanvas();
+            this.bindFullscreenEvents();
+        }
     }
 
     setupCanvas() {
@@ -45,6 +55,21 @@ class WhiteboardManager {
         window.addEventListener('resize', () => {
             this.resizeCanvas();
         });
+    }
+
+    setupFullscreenCanvas() {
+        // Set canvas size to viewport
+        this.fullscreenCanvas.width = window.innerWidth;
+        this.fullscreenCanvas.height = window.innerHeight - 70; // Account for header
+        
+        // Set drawing properties
+        this.fullscreenCtx.lineCap = 'round';
+        this.fullscreenCtx.lineJoin = 'round';
+        this.fullscreenCtx.strokeStyle = this.currentColor;
+        this.fullscreenCtx.lineWidth = this.currentSize;
+        
+        // Copy current whiteboard content
+        this.syncToFullscreen();
     }
 
     resizeCanvas() {
@@ -141,6 +166,51 @@ class WhiteboardManager {
         this.canvas.addEventListener('touchmove', this.preventDefaultTouch, { passive: false });
     }
 
+    bindFullscreenEvents() {
+        // Fullscreen tool selection
+        const fullscreenPenTool = document.getElementById('fullscreenPenTool');
+        const fullscreenEraserTool = document.getElementById('fullscreenEraserTool');
+        const fullscreenColorPicker = document.getElementById('fullscreenColorPicker');
+        const fullscreenBrushSize = document.getElementById('fullscreenBrushSize');
+        const fullscreenClearButton = document.getElementById('fullscreenClearWhiteboard');
+
+        if (fullscreenPenTool) {
+            fullscreenPenTool.addEventListener('click', () => this.selectTool('pen'));
+        }
+        
+        if (fullscreenEraserTool) {
+            fullscreenEraserTool.addEventListener('click', () => this.selectTool('eraser'));
+        }
+        
+        if (fullscreenColorPicker) {
+            fullscreenColorPicker.addEventListener('change', (e) => this.setColor(e.target.value));
+        }
+        
+        if (fullscreenBrushSize) {
+            fullscreenBrushSize.addEventListener('input', (e) => this.setBrushSize(e.target.value));
+        }
+        
+        if (fullscreenClearButton) {
+            fullscreenClearButton.addEventListener('click', () => this.clearCanvas());
+        }
+
+        // Drawing events for fullscreen canvas
+        this.fullscreenCanvas.addEventListener('mousedown', (e) => this.startDrawingFullscreen(e));
+        this.fullscreenCanvas.addEventListener('mousemove', (e) => this.drawFullscreen(e));
+        this.fullscreenCanvas.addEventListener('mouseup', () => this.stopDrawingFullscreen());
+        this.fullscreenCanvas.addEventListener('mouseout', () => this.stopDrawingFullscreen());
+
+        // Touch events for fullscreen canvas
+        this.fullscreenCanvas.addEventListener('touchstart', (e) => this.handleFullscreenTouchStart(e));
+        this.fullscreenCanvas.addEventListener('touchmove', (e) => this.handleFullscreenTouchMove(e));
+        this.fullscreenCanvas.addEventListener('touchend', (e) => this.handleFullscreenTouchEnd(e));
+        this.fullscreenCanvas.addEventListener('touchcancel', (e) => this.handleFullscreenTouchEnd(e));
+
+        // Prevent default touch behaviors
+        this.fullscreenCanvas.addEventListener('touchstart', this.preventDefaultTouch, { passive: false });
+        this.fullscreenCanvas.addEventListener('touchmove', this.preventDefaultTouch, { passive: false });
+    }
+
     preventDefaultTouch(e) {
         e.preventDefault();
     }
@@ -175,6 +245,37 @@ class WhiteboardManager {
         e.preventDefault();
         if (this.isDrawing) {
             this.stopDrawing();
+        }
+    }
+
+    handleFullscreenTouchStart(e) {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            this.startDrawingFullscreen(mouseEvent);
+        }
+    }
+
+    handleFullscreenTouchMove(e) {
+        e.preventDefault();
+        if (e.touches.length === 1 && this.isDrawing) {
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            this.drawFullscreen(mouseEvent);
+        }
+    }
+
+    handleFullscreenTouchEnd(e) {
+        e.preventDefault();
+        if (this.isDrawing) {
+            this.stopDrawingFullscreen();
         }
     }
 
@@ -256,6 +357,60 @@ class WhiteboardManager {
         this.currentStroke = null;
     }
 
+    startDrawingFullscreen(e) {
+        this.isDrawing = true;
+        const pos = this.getMousePosFullscreen(e);
+        this.lastX = pos.x;
+        this.lastY = pos.y;
+
+        // Start new stroke
+        this.currentStroke = {
+            tool: this.currentTool,
+            color: this.currentColor,
+            size: this.currentSize,
+            points: [{ x: pos.x, y: pos.y }]
+        };
+    }
+
+    drawFullscreen(e) {
+        if (!this.isDrawing) return;
+
+        const pos = this.getMousePosFullscreen(e);
+        
+        // Add point to current stroke
+        this.currentStroke.points.push({ x: pos.x, y: pos.y });
+
+        // Draw on fullscreen canvas
+        this.drawLineFullscreen(this.lastX, this.lastY, pos.x, pos.y);
+
+        this.lastX = pos.x;
+        this.lastY = pos.y;
+    }
+
+    stopDrawingFullscreen() {
+        if (!this.isDrawing) return;
+        
+        this.isDrawing = false;
+
+        // Send stroke to other users
+        if (this.currentStroke && this.websocket) {
+            this.sendStroke(this.currentStroke);
+        }
+
+        // Sync back to main canvas
+        this.syncFromFullscreen();
+
+        this.currentStroke = null;
+    }
+
+    getMousePosFullscreen(e) {
+        const rect = this.fullscreenCanvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+    }
+
     drawLine(x1, y1, x2, y2) {
         this.ctx.save();
         
@@ -274,6 +429,26 @@ class WhiteboardManager {
         this.ctx.stroke();
         
         this.ctx.restore();
+    }
+
+    drawLineFullscreen(x1, y1, x2, y2) {
+        this.fullscreenCtx.save();
+        
+        if (this.currentTool === 'eraser') {
+            this.fullscreenCtx.globalCompositeOperation = 'destination-out';
+            this.fullscreenCtx.lineWidth = this.currentSize * 2;
+        } else {
+            this.fullscreenCtx.globalCompositeOperation = 'source-over';
+            this.fullscreenCtx.strokeStyle = this.currentColor;
+            this.fullscreenCtx.lineWidth = this.currentSize;
+        }
+
+        this.fullscreenCtx.beginPath();
+        this.fullscreenCtx.moveTo(x1, y1);
+        this.fullscreenCtx.lineTo(x2, y2);
+        this.fullscreenCtx.stroke();
+        
+        this.fullscreenCtx.restore();
     }
 
     drawStroke(stroke) {
@@ -444,6 +619,66 @@ class WhiteboardManager {
         const pointer = document.getElementById(`pointer-${userId}`);
         if (pointer) {
             pointer.remove();
+        }
+    }
+
+    syncToFullscreen() {
+        if (!this.fullscreenCanvas || !this.canvas) return;
+        
+        // Clear fullscreen canvas
+        this.fullscreenCtx.clearRect(0, 0, this.fullscreenCanvas.width, this.fullscreenCanvas.height);
+        
+        // Scale and draw main canvas content
+        const scaleX = this.fullscreenCanvas.width / this.canvas.width;
+        const scaleY = this.fullscreenCanvas.height / this.canvas.height;
+        const scale = Math.min(scaleX, scaleY);
+        
+        const offsetX = (this.fullscreenCanvas.width - this.canvas.width * scale) / 2;
+        const offsetY = (this.fullscreenCanvas.height - this.canvas.height * scale) / 2;
+        
+        this.fullscreenCtx.drawImage(
+            this.canvas, 
+            offsetX, offsetY, 
+            this.canvas.width * scale, 
+            this.canvas.height * scale
+        );
+    }
+
+    syncFromFullscreen() {
+        if (!this.fullscreenCanvas || !this.canvas) return;
+        
+        // Scale down fullscreen content to main canvas
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        const scaleX = this.canvas.width / this.fullscreenCanvas.width;
+        const scaleY = this.canvas.height / this.fullscreenCanvas.height;
+        const scale = Math.min(scaleX, scaleY);
+        
+        this.ctx.drawImage(
+            this.fullscreenCanvas,
+            0, 0,
+            this.canvas.width, this.canvas.height
+        );
+    }
+
+    enterFullscreen() {
+        const fullscreenModal = document.getElementById('whiteboardFullscreen');
+        if (fullscreenModal) {
+            this.setupFullscreenCanvas();
+            fullscreenModal.classList.add('active');
+            
+            // Focus on canvas for better interaction
+            setTimeout(() => {
+                this.fullscreenCanvas.focus();
+            }, 100);
+        }
+    }
+
+    exitFullscreen() {
+        const fullscreenModal = document.getElementById('whiteboardFullscreen');
+        if (fullscreenModal) {
+            fullscreenModal.classList.remove('active');
+            this.syncFromFullscreen();
         }
     }
 }

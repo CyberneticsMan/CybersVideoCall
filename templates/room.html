@@ -113,11 +113,62 @@
                 <button id="toggleChatBtn" class="control-btn large" title="Toggle chat">
                     💬
                 </button>
+                <button id="fullscreenWhiteboardBtn" class="control-btn large" title="Fullscreen whiteboard">
+                    🖼️
+                </button>
                 <button id="settingsBtn" class="control-btn large" title="Settings">
                     ⚙️
                 </button>
             </div>
         </div>
+    </div>
+
+    <!-- Fullscreen Video Overlay -->
+    <div id="fullscreenOverlay" class="fullscreen-overlay">
+        <div class="fullscreen-header">
+            <div class="fullscreen-title" id="fullscreenTitle">Video Call</div>
+            <button class="fullscreen-close" id="fullscreenClose" title="Exit fullscreen">&times;</button>
+        </div>
+        <div class="fullscreen-video-container">
+            <video id="fullscreenVideo" class="fullscreen-video" autoplay playsinline></video>
+        </div>
+        <div class="fullscreen-controls">
+            <button id="fullscreenToggleVideo" class="control-btn" title="Toggle video">📹</button>
+            <button id="fullscreenToggleAudio" class="control-btn" title="Toggle audio">🎤</button>
+            <button id="fullscreenPip" class="control-btn" title="Picture in Picture">📺</button>
+            <button id="fullscreenShare" class="control-btn" title="Share screen">🖥️</button>
+        </div>
+    </div>
+
+    <!-- Whiteboard Fullscreen -->
+    <div id="whiteboardFullscreen" class="whiteboard-fullscreen">
+        <div class="whiteboard-fullscreen-header">
+            <div class="whiteboard-fullscreen-tools">
+                <button id="fullscreenPenTool" class="tool-btn active" data-tool="pen">✏️</button>
+                <button id="fullscreenEraserTool" class="tool-btn" data-tool="eraser">🧹</button>
+                <input type="color" id="fullscreenColorPicker" value="#000000" />
+                <input type="range" id="fullscreenBrushSize" min="1" max="20" value="3" />
+                <button id="fullscreenClearWhiteboard" class="btn btn-secondary">Clear</button>
+            </div>
+            <div>
+                <button id="exitWhiteboardFullscreen" class="btn btn-secondary">Exit Fullscreen</button>
+            </div>
+        </div>
+        <canvas id="whiteboardFullscreenCanvas" class="whiteboard-fullscreen-canvas"></canvas>
+    </div>
+
+    <!-- Picture-in-Picture Container -->
+    <div id="pipContainer" class="pip-container">
+        <video id="pipVideo" class="pip-video" autoplay muted playsinline></video>
+        <div class="pip-controls">
+            <button id="pipExpand" class="pip-btn" title="Expand">⛶</button>
+            <button id="pipClose" class="pip-btn" title="Close">&times;</button>
+        </div>
+    </div>
+
+    <!-- Screen Share Indicator -->
+    <div id="screenShareIndicator" class="screen-share-indicator">
+        🖥️ You are sharing your screen
     </div>
 
     <!-- Settings modal -->
